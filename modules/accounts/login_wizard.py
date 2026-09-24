@@ -21,6 +21,7 @@ class LoginState:
     phone_code_hash: str
     owner_id: int
     created_at: float
+    awaiting_password: bool = False
 
 
 class LoginWizard:
@@ -76,7 +77,10 @@ class LoginWizard:
                 return
 
             try:
-                await self._finish_login(event, state, text)
+                if state.awaiting_password:
+                    await self._finish_password(event, state, text)
+                else:
+                    await self._finish_login(event, state, text)
             except (PhoneCodeInvalidError, PhoneCodeExpiredError):
                 await event.respond("کد نادرست یا منقضی است. دوباره کد را ارسال کن یا /cancel بزن.")
             except SessionPasswordNeededError:
@@ -104,6 +108,30 @@ class LoginWizard:
             "کد را در جای دیگری ذخیره نکن."
         )
 
+    async def _finish_password(self, event: Any, state: LoginState, password: str) -> None:
+        user = await state.client.sign_in(
+            phone=state.phone,
+            password=password,
+            phone_code_hash=state.phone_code_hash,
+        )
+        await self._complete(event, state, user)
+
+    async def _complete(self, event: Any, state: LoginState, user: Any) -> None:
+        safe_phone = state.phone.replace("+", "").replace(" ", "").replace("-", "")
+        final_path = self.session_directory / safe_phone
+        await state.client.disconnect()
+        old_path = self.session_directory / "pending_login.session"
+        if old_path.exists():
+            old_path.replace(final_path.with_suffix(".session"))
+
+        self.states.pop(self.owner_id, None)
+        await self.db.set_setting("last_logged_phone", state.phone)
+        if self.on_login:
+            await self.on_login(state.phone, str(final_path))
+        await event.respond(
+            f"ورود انجام شد. حساب {getattr(user, 'first_name', '') or ''} آماده استفاده است."
+        )
+
     async def _finish_login(self, event: Any, state: LoginState, text: str) -> None:
         try:
             user = await state.client.sign_in(
@@ -119,17 +147,4 @@ class LoginWizard:
                 phone_code_hash=state.phone_code_hash,
             )
 
-        safe_phone = state.phone.replace("+", "").replace(" ", "").replace("-", "")
-        final_path = self.session_directory / safe_phone
-        await state.client.disconnect()
-        old_path = self.session_directory / "pending_login.session"
-        if old_path.exists():
-            old_path.rename(final_path.with_suffix(".session"))
-
-        self.states.pop(self.owner_id, None)
-        await self.db.set_setting("last_logged_phone", state.phone)
-        if self.on_login:
-            await self.on_login(state.phone, str(final_path))
-        await event.respond(
-            f"ورود انجام شد. حساب {getattr(user, 'first_name', '') or ''} آماده استفاده است."
-        )
+        await self._complete(event, state, user)
