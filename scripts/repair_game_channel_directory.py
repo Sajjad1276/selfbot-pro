@@ -103,18 +103,32 @@ async def fetch_one(client, username: str) -> dict:
     while True:
         attempts += 1
         try:
-            entity = await client.get_entity(username)
-            if not isinstance(entity, types.Channel) or not bool(getattr(entity, "broadcast", False)):
+            # Resolve from Telethon's local entity cache. The previous pass
+            # populated these channel access hashes during Telegram search,
+            # so this avoids another username-resolution RPC and its flood
+            # limit.
+            input_peer = await client.get_input_entity(username)
+            full = await client(
+                functions.channels.GetFullChannelRequest(channel=input_peer)
+            )
+            participants = getattr(full.full_chat, "participants_count", None)
+            about = clean_text(getattr(full.full_chat, "about", "") or "")
+            channel = next(
+                (
+                    chat for chat in getattr(full, "chats", [])
+                    if isinstance(chat, types.Channel)
+                ),
+                None,
+            )
+            if channel is None:
+                raise ValueError("channel_entity_missing")
+            if not bool(getattr(channel, "broadcast", False)):
                 raise ValueError("not_public_broadcast_channel")
 
-            participants = getattr(entity, "participants_count", None)
-            about = ""
+            title = clean_text(getattr(channel, "title", "") or username)
             if participants is None:
-                full = await client(functions.channels.GetFullChannelRequest(channel=entity))
-                participants = getattr(full.full_chat, "participants_count", None)
-                about = clean_text(getattr(full.full_chat, "about", "") or "")
+                participants = getattr(channel, "participants_count", None)
 
-            title = clean_text(getattr(entity, "title", "") or username)
             return {
                 "title": title,
                 "username": username.casefold(),
