@@ -33,8 +33,10 @@ class SelfBotPro:
         await self.db.connect()
 
         await self.account_manager.connect_saved_sessions()
+        if not self.client:
+            self.client = self.account_manager.active() or next(iter(self.account_manager.clients.values()), None)
 
-        if self.settings.string_session or self.settings.phone:
+        if not self.client and self.settings.string_session:
             key = self.settings.phone or "primary"
             self.client = await self.account_manager.connect_primary(
                 key,
@@ -105,7 +107,8 @@ class SelfBotPro:
 
         if self.client:
             me = await self.client.get_me()
-            await self._send_log("شروع", f"اکانت {me.first_name or ""} با شناسه {me.id} فعال شد.")
+            name = me.first_name or ""
+            await self._send_log("شروع", f"اکانت {name} با شناسه {me.id} فعال شد.")
         elif self.setup_bot:
             await self._send_log("انتظار ورود", "برای اتصال حساب کاربری، ربات راه‌انداز را با /start اجرا کنید.")
 
