@@ -49,6 +49,7 @@ class SelfBotPro:
 
         from modules.messaging.auto_reply import register as register_auto_reply
         from modules.messaging.secretary import register as register_secretary
+        from modules.messaging.auto_read import register as register_auto_read
         from modules.command_router import register as register_command_router
         from modules.status.rotating_name import register as register_rotating_name
         from modules.status.animated_bio import register as register_animated_bio
@@ -64,9 +65,10 @@ class SelfBotPro:
                 register_animated_bio,
                 register_clock_bio,
                 register_time_bio,
-                register_command_router,
             ):
                 await register(client, self.db, self.settings, self.scheduler)
+            await register_auto_read(client, self.db)
+            await register_command_router(client, self.db, self.settings, self.scheduler, self.account_manager)
 
         self.message_archive = MessageArchive()
         register_cache(self.client, self.message_archive)
@@ -115,8 +117,7 @@ class SelfBotPro:
 
         app = FastAPI(title="SelfBot Pro", docs_url=None, redoc_url=None)
 
-        @app.get("/health")
-        def authorized(request: Any) -> bool:
+        def authorized(request) -> bool:
             expected = self.settings.control_api_key
             if not expected:
                 return False
