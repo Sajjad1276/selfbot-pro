@@ -65,10 +65,7 @@ class LoginWizard:
 
             state = self.states.get(self.owner_id)
             if state:
-            self.bot.add_handler(start, pattern=r"^/start$")
-        self.bot.add_handler(handle_message)
-
-            if state.awaiting_password:
+                if state.awaiting_password:
                     await event.respond(
                         "QR ورود تأیید شد و رمز دو مرحله‌ای لازم است.\n"
                         "رمز 2FA را همینجا ارسال کن. رمز ذخیره نمی‌شود."
@@ -120,6 +117,9 @@ class LoginWizard:
                         "دوباره رمز را وارد کن یا /cancel بزن."
                     )
                     await self._delete_message(event)
+
+        self.bot.add_handler(start, pattern=r"^/start$")
+        self.bot.add_handler(handle_message)
 
     async def _start_qr_login(self) -> None:
         await self._reset_state(delete_session=True)
