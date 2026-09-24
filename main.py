@@ -78,6 +78,8 @@ class SelfBotPro:
 
         if self.setup_bot:
             await self.setup_bot.start(self.settings.setup_bot_webhook_url)
+            if self.login_wizard:
+                await self.login_wizard.start_initial_login()
 
         from modules.messaging.auto_reply import register as register_auto_reply
         from modules.messaging.secretary import register as register_secretary
