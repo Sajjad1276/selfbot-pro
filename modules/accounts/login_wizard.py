@@ -2,16 +2,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from telethon import TelegramClient, events
 from telethon.errors import (
+    PasswordHashInvalidError,
     PhoneCodeExpiredError,
     PhoneCodeInvalidError,
+    PhoneNumberInvalidError,
     SessionPasswordNeededError,
 )
+
+
+LOGIN_TIMEOUT_SECONDS = 10 * 60
 
 
 @dataclass
@@ -51,9 +57,17 @@ class LoginWizard:
         async def start(event: Any) -> None:
             if event.sender_id != self.owner_id:
                 return
+            state = self.states.get(self.owner_id)
+            if state:
+                step = "رمز دو مرحله‌ای" if state.awaiting_password else "کد ورود"
+                await event.respond(
+                    f"یک فرآیند ورود فعال است. مرحله فعلی: {step}\n"
+                    "برای شروع مجدد، /cancel را بفرست."
+                )
+                return
             await event.respond(
                 "SelfBot Pro آماده است.\n\n"
-                "برای ورود حساب Telegram، شماره را با فرمت +98912xxxxxxx ارسال کن."
+                "شماره حساب Telegram را با فرمت +98912xxxxxxx ارسال کن."
             )
 
         @self.bot.on(events.NewMessage())
@@ -63,17 +77,19 @@ class LoginWizard:
 
             text = event.raw_text.strip()
             if text == "/cancel":
-                state = self.states.pop(self.owner_id, None)
-                if state:
-                    await state.client.disconnect()
-                await event.respond("فرآیند ورود لغو شد.")
+                await self._cancel(event)
                 return
 
             state = self.states.get(self.owner_id)
             if not state:
-                if not text.startswith("+"):
-                    return
-                await self._request_code(event, text)
+                if text.startswith("+"):
+                    await self._request_code(event, text)
+                return
+
+            if self._expired(state):
+                await self._reset_state()
+                await event.respond("مهلت ورود تمام شد. دوباره /start را بزن.")
+                await self._delete_message(event)
                 return
 
             try:
@@ -81,12 +97,32 @@ class LoginWizard:
                     await self._finish_password(event, state, text)
                 else:
                     await self._finish_login(event, state, text)
-            except (PhoneCodeInvalidError, PhoneCodeExpiredError):
-                await event.respond("کد نادرست یا منقضی است. دوباره کد را ارسال کن یا /cancel بزن.")
             except SessionPasswordNeededError:
+                state.awaiting_password = True
                 await self.db.set_setting("login_2fa_pending", "1")
-                await event.respond("ورود این حساب نیاز به رمز دو مرحله‌ای دارد. رمز 2FA را ارسال کن.")
-                self.states[self.owner_id] = state
+                await event.respond(
+                    "این حساب رمز دو مرحله‌ای دارد. رمز 2FA را همینجا ارسال کن.\n"
+                    "رمز در برنامه ذخیره نمی‌شود."
+                )
+                await self._delete_message(event)
+            except (PhoneCodeInvalidError, PhoneCodeExpiredError):
+                await event.respond("کد ورود نادرست یا منقضی است. کد را دوباره ارسال کن یا /cancel بزن.")
+                await self._delete_message(event)
+            except PasswordHashInvalidError:
+                await event.respond("رمز دو مرحله‌ای نادرست است. دوباره وارد کن یا /cancel بزن.")
+                await self._delete_message(event)
+            except Exception:
+                self.logger.exception("Login flow failed")
+                await event.respond("ورود انجام نشد. خطای فنی ثبت شد. /cancel و سپس دوباره تلاش کن.")
+                await self._delete_message(event)
+
+        self.logger.info("Login wizard registered for owner %s", self.owner_id)
+
+    def _expired(self, state: LoginState) -> bool:
+        return (
+            asyncio.get_running_loop().time() - state.created_at
+            > LOGIN_TIMEOUT_SECONDS
+        )
 
     async def _request_code(self, event: Any, phone: str) -> None:
         client = TelegramClient(
@@ -94,8 +130,21 @@ class LoginWizard:
             self.api_id,
             self.api_hash,
         )
-        await client.connect()
-        sent = await client.send_code_request(phone)
+        try:
+            await client.connect()
+            sent = await client.send_code_request(phone)
+        except PhoneNumberInvalidError:
+            await client.disconnect()
+            await event.respond("شماره Telegram معتبر نیست. شماره را با فرمت بین‌المللی ارسال کن.")
+            await self._delete_message(event)
+            return
+        except Exception:
+            await client.disconnect()
+            self.logger.exception("Could not request Telegram login code")
+            await event.respond("ارسال کد ورود انجام نشد. دوباره تلاش کن.")
+            await self._delete_message(event)
+            return
+
         self.states[self.owner_id] = LoginState(
             phone=phone,
             client=client,
@@ -107,11 +156,26 @@ class LoginWizard:
             "کد ورود ارسال شد. کد Telegram را همینجا ارسال کن.\n"
             "کد را در جای دیگری ذخیره نکن."
         )
+        await self._delete_message(event)
 
-    async def _finish_password(self, event: Any, state: LoginState, password: str) -> None:
+    async def _finish_password(
+        self,
+        event: Any,
+        state: LoginState,
+        password: str,
+    ) -> None:
+        user = await state.client.sign_in(password=password)
+        await self._complete(event, state, user)
+
+    async def _finish_login(
+        self,
+        event: Any,
+        state: LoginState,
+        text: str,
+    ) -> None:
         user = await state.client.sign_in(
             phone=state.phone,
-            password=password,
+            code=text,
             phone_code_hash=state.phone_code_hash,
         )
         await self._complete(event, state, user)
@@ -119,32 +183,36 @@ class LoginWizard:
     async def _complete(self, event: Any, state: LoginState, user: Any) -> None:
         safe_phone = state.phone.replace("+", "").replace(" ", "").replace("-", "")
         final_path = self.session_directory / safe_phone
-        await state.client.disconnect()
         old_path = self.session_directory / "pending_login.session"
+
+        await state.client.disconnect()
         if old_path.exists():
             old_path.replace(final_path.with_suffix(".session"))
 
         self.states.pop(self.owner_id, None)
         await self.db.set_setting("last_logged_phone", state.phone)
+        await self.db.set_setting("login_2fa_pending", "0")
+
         if self.on_login:
             await self.on_login(state.phone, str(final_path))
-        await event.respond(
-            f"ورود انجام شد. حساب {getattr(user, 'first_name', '') or ''} آماده استفاده است."
-        )
 
-    async def _finish_login(self, event: Any, state: LoginState, text: str) -> None:
-        try:
-            user = await state.client.sign_in(
-                phone=state.phone,
-                code=text,
-                phone_code_hash=state.phone_code_hash,
-            )
-        except SessionPasswordNeededError:
-            password = text
-            user = await state.client.sign_in(
-                phone=state.phone,
-                password=password,
-                phone_code_hash=state.phone_code_hash,
-            )
+        name = (getattr(user, "first_name", "") or "").strip()
+        label = f"حساب {name}" if name else "حساب کاربری"
+        await event.respond(f"ورود انجام شد. {label} آماده استفاده است.")
+        await self._delete_message(event)
 
-        await self._complete(event, state, user)
+    async def _cancel(self, event: Any) -> None:
+        await self._reset_state()
+        await self.db.set_setting("login_2fa_pending", "0")
+        await event.respond("فرآیند ورود لغو شد.")
+        await self._delete_message(event)
+
+    async def _reset_state(self) -> None:
+        state = self.states.pop(self.owner_id, None)
+        if state:
+            with suppress(Exception):
+                await state.client.disconnect()
+
+    async def _delete_message(self, event: Any) -> None:
+        with suppress(Exception):
+            await event.delete()
