@@ -6,14 +6,43 @@ on:
   pull_request:
 
 jobs:
-  syntax:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
       - name: Install dependencies
         run: pip install -r requirements.txt
+
       - name: Compile Python
         run: python -m compileall -q .
+
+      - name: Import smoke test
+        run: |
+          python - <<'PY'
+          import importlib
+          import pkgutil
+          import modules
+
+          import main
+          import config
+
+          failures = []
+          for module_info in pkgutil.walk_packages(
+              modules.__path__, modules.__name__ + "."
+          ):
+              name = module_info.name
+              try:
+                  importlib.import_module(name)
+              except Exception as exc:
+                  failures.append(f"{name}: {type(exc).__name__}: {exc}")
+
+          if failures:
+              raise SystemExit("Import failures:\n" + "\n".join(failures))
+
+          print("Import smoke test passed.")
+          PY
