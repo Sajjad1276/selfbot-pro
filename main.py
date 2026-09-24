@@ -111,7 +111,7 @@ class SelfBotPro:
         await self.db.close()
 
     async def _run_http_server(self) -> None:
-        from fastapi import FastAPI
+        from fastapi import FastAPI, Request, HTTPException
         from fastapi.responses import JSONResponse
         import uvicorn
 
@@ -129,8 +129,7 @@ class SelfBotPro:
             return JSONResponse({"status": "ok" if connected else "starting", "telegram": connected})
 
         @app.get("/dialogs")
-        async def dialogs(request: Any) -> JSONResponse:
-            from fastapi import HTTPException
+        async def dialogs(request: Request) -> JSONResponse:
             if not authorized(request):
                 raise HTTPException(status_code=401, detail="unauthorized")
             items = []
@@ -139,8 +138,7 @@ class SelfBotPro:
             return JSONResponse({"items": items})
 
         @app.post("/send")
-        async def send(payload: dict[str, Any], request: Any) -> JSONResponse:
-            from fastapi import HTTPException
+        async def send(payload: dict[str, Any], request: Request) -> JSONResponse:
             if not authorized(request):
                 raise HTTPException(status_code=401, detail="unauthorized")
             chat_id = payload.get("chat_id")
