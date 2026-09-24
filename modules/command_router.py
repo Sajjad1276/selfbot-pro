@@ -18,12 +18,13 @@ from modules.utils.helpers import owner_only, parse_duration, split_command
 
 
 class CommandRouter:
-    def __init__(self, client: Any, db: Any, settings: Any, scheduler: Any) -> None:
+    def __init__(self, client: Any, db: Any, settings: Any, scheduler: Any, accounts: Any = None) -> None:
         self.client = client
         self.db = db
         self.settings = settings
         self.scheduler = scheduler
         self.currency = CurrencyClient()
+        self.accounts = accounts
         self.claude = (
             ClaudeChat(settings.anthropic_api_key)
             if settings.anthropic_api_key
@@ -187,6 +188,29 @@ class CommandRouter:
             await event.edit("فرمان افزونه: .plugin list")
             return
 
+    async def _account(self, event: Any, args: str) -> None:
+        if not self.accounts:
+            await event.edit("مدیریت حساب فعال نیست.")
+            return
+        parts = args.split()
+        if not parts:
+            await event.edit("استفاده: .account list یا .account switch شماره")
+            return
+        if parts[0] == "list":
+            rows = await self.accounts.list_accounts()
+            await event.edit("\n".join(
+                f"{r['phone']} | {r['username'] or '-'} | {'فعال' if r['is_active'] else 'متصل'}"
+                for r in rows
+            ) or "حسابی ثبت نشده است.")
+            return
+        if parts[0] == "switch" and len(parts) == 2:
+            self.client = self.accounts.switch(parts[1])
+            await self.db.execute("UPDATE accounts SET is_active=0")
+            await self.db.execute("UPDATE accounts SET is_active=1 WHERE phone=?", (parts[1],))
+            await event.edit("حساب فعال تغییر کرد.")
+            return
+        await event.edit("دستور حساب نامعتبر است.")
+
     async def _schedule(self, event: Any, args: str) -> None:
         parts = shlex.split(args)
         if not parts:
@@ -217,8 +241,8 @@ class CommandRouter:
         await event.edit("دستور زمان‌بندی نامعتبر است.")
 
 
-async def register(client: Any, db: Any, settings: Any, scheduler: Any) -> None:
-    router = CommandRouter(client, db, settings, scheduler)
+async def register(client: Any, db: Any, settings: Any, scheduler: Any, accounts: Any = None) -> None:
+    router = CommandRouter(client, db, settings, scheduler, accounts)
     scheduler.register_handler(
         "send_message",
         lambda chat_id, text: client.send_message(chat_id, text),
