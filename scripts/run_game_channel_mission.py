@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import random
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
-from telethon import TelegramClient, functions, types
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from telethon import functions, types
 
 from config import get_settings
 from modules.utils.database import Database
