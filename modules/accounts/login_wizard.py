@@ -185,7 +185,7 @@ class LoginWizard:
                     "برای QR تازه /newcode و برای لغو /cancel."
                 ),
             )
-            state.qr_message_id = message.id
+            state.qr_message_id = int(message["message_id"])
             self.logger.info("Initial/login QR sent to owner.")
         except Exception:
             self.logger.exception("Could not send QR code")
