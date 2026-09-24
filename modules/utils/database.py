@@ -250,7 +250,7 @@ class Database:
         await self.execute(
             """
             INSERT INTO rotating_texts(type, texts_json, interval, current_index, is_active)
-            VALUES(?, ?, 0, 0, ?)
+            VALUES(?, ?, ?, 0, ?)
             ON CONFLICT(type) DO UPDATE SET
                 texts_json = excluded.texts_json,
                 interval = excluded.interval,
