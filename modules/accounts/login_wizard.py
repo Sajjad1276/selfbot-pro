@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,8 @@ from telethon.errors import (
 
 
 LOGIN_TIMEOUT_SECONDS = 10 * 60
+_PERSIAN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
+_ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
 
 
 @dataclass
@@ -67,7 +70,7 @@ class LoginWizard:
                 return
             await event.respond(
                 "SelfBot Pro آماده است.\n\n"
-                "شماره حساب Telegram را با فرمت +98912xxxxxxx ارسال کن."
+                "شماره حساب Telegram را با فرمت بین‌المللی ارسال کن."
             )
 
         @self.bot.on(events.NewMessage())
@@ -75,7 +78,9 @@ class LoginWizard:
             if event.sender_id != self.owner_id or not event.raw_text:
                 return
 
-            text = event.raw_text.strip()
+            raw_text = event.raw_text
+            text = raw_text.strip()
+
             if text == "/cancel":
                 await self._cancel(event)
                 return
@@ -96,27 +101,49 @@ class LoginWizard:
                 if state.awaiting_password:
                     await self._finish_password(event, state, text)
                 else:
-                    await self._finish_login(event, state, text)
+                    code = self._normalize_code(raw_text)
+                    if not code:
+                        await event.respond(
+                            "کد نامعتبر است. فقط عددهای کد Telegram را ارسال کن."
+                        )
+                        await self._delete_message(event)
+                        return
+                    if len(code) < 4:
+                        await event.respond(
+                            "کد ناقص دریافت شد. همه رقم‌های کد Telegram را یکجا ارسال کن."
+                        )
+                        await self._delete_message(event)
+                        return
+                    await self._finish_login(event, state, code)
             except SessionPasswordNeededError:
                 state.awaiting_password = True
                 await self.db.set_setting("login_2fa_pending", "1")
                 await event.respond(
                     "این حساب رمز دو مرحله‌ای دارد. رمز 2FA را همینجا ارسال کن.\n"
-                    "رمز در برنامه ذخیره نمی‌شود."
+                    "رمز ذخیره نمی‌شود."
                 )
                 await self._delete_message(event)
             except (PhoneCodeInvalidError, PhoneCodeExpiredError):
-                await event.respond("کد ورود نادرست یا منقضی است. کد را دوباره ارسال کن یا /cancel بزن.")
+                await event.respond(
+                    "کد Telegram نادرست یا منقضی است. کد کامل را دوباره ارسال کن یا /cancel بزن."
+                )
                 await self._delete_message(event)
             except PasswordHashInvalidError:
-                await event.respond("رمز دو مرحله‌ای نادرست است. دوباره وارد کن یا /cancel بزن.")
+                await event.respond(
+                    "رمز دو مرحله‌ای نادرست است. دوباره وارد کن یا /cancel بزن."
+                )
                 await self._delete_message(event)
             except Exception:
                 self.logger.exception("Login flow failed")
-                await event.respond("ورود انجام نشد. خطای فنی ثبت شد. /cancel و سپس دوباره تلاش کن.")
+                await event.respond(
+                    "ورود انجام نشد. خطای فنی ثبت شد. /cancel و سپس دوباره تلاش کن."
+                )
                 await self._delete_message(event)
 
-        self.logger.info("Login wizard registered for owner %s", self.owner_id)
+    @staticmethod
+    def _normalize_code(value: str) -> str:
+        normalized = value.translate(_PERSIAN_DIGITS).translate(_ARABIC_DIGITS)
+        return re.sub(r"\D", "", normalized)
 
     def _expired(self, state: LoginState) -> bool:
         return (
@@ -135,7 +162,9 @@ class LoginWizard:
             sent = await client.send_code_request(phone)
         except PhoneNumberInvalidError:
             await client.disconnect()
-            await event.respond("شماره Telegram معتبر نیست. شماره را با فرمت بین‌المللی ارسال کن.")
+            await event.respond(
+                "شماره Telegram معتبر نیست. شماره را با فرمت بین‌المللی ارسال کن."
+            )
             await self._delete_message(event)
             return
         except Exception:
@@ -153,8 +182,8 @@ class LoginWizard:
             created_at=asyncio.get_running_loop().time(),
         )
         await event.respond(
-            "کد ورود ارسال شد. کد Telegram را همینجا ارسال کن.\n"
-            "کد را در جای دیگری ذخیره نکن."
+            "کد ورود ارسال شد. کد کامل Telegram را همینجا ارسال کن.\n"
+            "اگر کد به شکل چند رقم با فاصله نمایش داده شد، همان را ارسال کن."
         )
         await self._delete_message(event)
 
@@ -171,11 +200,11 @@ class LoginWizard:
         self,
         event: Any,
         state: LoginState,
-        text: str,
+        code: str,
     ) -> None:
         user = await state.client.sign_in(
             phone=state.phone,
-            code=text,
+            code=code,
             phone_code_hash=state.phone_code_hash,
         )
         await self._complete(event, state, user)
