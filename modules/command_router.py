@@ -6,7 +6,7 @@ from typing import Any
 
 from telethon import events
 
-from modules.ai.chatbot import ClaudeChat
+from modules.ai.gemini import GeminiChat
 from modules.ai.translator import translate
 from modules.finance.calculator import calculate
 from modules.finance.currency import CurrencyClient
@@ -25,21 +25,21 @@ class CommandRouter:
         self.scheduler = scheduler
         self.currency = CurrencyClient()
         self.accounts = accounts
-        self.claude = (
-            ClaudeChat(settings.anthropic_api_key)
-            if settings.anthropic_api_key
+        self.gemini = (
+            GeminiChat(settings.gemini_api_key, settings.gemini_model)
+            if settings.gemini_api_key
             else None
         )
 
     async def register(self) -> None:
         @self.client.on(events.NewMessage(incoming=True))
         async def ai_handler(event: Any) -> None:
-            if not event.is_private or not self.claude or not event.raw_text:
+            if not event.is_private or not self.gemini or not event.raw_text:
                 return
             if await self.db.get_setting(f"ai:{event.chat_id}", "0") != "1":
                 return
             history = await self.db.get_ai_memory(event.chat_id, 50)
-            answer = await self.claude.reply(history, event.raw_text)
+            answer = await self.gemini.reply(history, event.raw_text, self.settings.default_lang)
             await self.db.save_ai_message(event.chat_id, "user", event.raw_text)
             await self.db.save_ai_message(event.chat_id, "assistant", answer)
             await event.reply(answer)
@@ -162,8 +162,8 @@ class CommandRouter:
             return
 
         if command == "ai":
-            if not self.claude:
-                await event.edit("ANTHROPIC_API_KEY تنظیم نشده است.")
+            if not self.gemini:
+                await event.edit("GEMINI_API_KEY تنظیم نشده است.")
                 return
             if args.lower() in {"on", "off"}:
                 await self.db.set_setting(f"ai:{event.chat_id}", "1" if args.lower() == "on" else "0")
