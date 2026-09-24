@@ -60,16 +60,26 @@ class SelfBotPro:
 
         from modules.messaging.auto_reply import register as register_auto_reply
         from modules.messaging.secretary import register as register_secretary
+        from modules.command_router import register as register_command_router
         from modules.status.rotating_name import register as register_rotating_name
         from modules.status.animated_bio import register as register_animated_bio
+        from modules.status.clock_bio import register as register_clock_bio
+        from modules.status.time_bio import register as register_time_bio
+        from modules.security.saved_deleted import MessageArchive, register_cache
 
         for register in (
             register_auto_reply,
             register_secretary,
             register_rotating_name,
             register_animated_bio,
+            register_clock_bio,
+            register_time_bio,
+            register_command_router,
         ):
             await register(self.client, self.db, self.settings, self.scheduler)
+
+        self.message_archive = MessageArchive()
+        register_cache(self.client, self.message_archive)
 
         await self._send_log(
             "شروع",
