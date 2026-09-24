@@ -7,6 +7,7 @@ from typing import Any
 from telethon import events
 
 from modules.ai.gemini import GeminiChat
+from modules.ai.dev_agent import DeveloperAgent
 from modules.ai.translator import translate
 from modules.finance.calculator import calculate
 from modules.finance.currency import CurrencyClient
@@ -30,6 +31,17 @@ class CommandRouter:
             if settings.gemini_api_key
             else None
         )
+        self.dev_agent = None
+        if settings.gemini_api_key and settings.github_token and settings.owner_id:
+            self.dev_agent = DeveloperAgent(
+                api_key=settings.gemini_api_key,
+                model=settings.gemini_model,
+                github_token=settings.github_token,
+                repository=settings.dev_agent_repository,
+                branch=settings.dev_agent_branch,
+                railway_health_url=settings.railway_health_url,
+                max_rounds=settings.dev_agent_max_rounds,
+            )
 
     async def register(self) -> None:
         @self.client.on(events.NewMessage(incoming=True))
@@ -69,6 +81,7 @@ class CommandRouter:
                 ".friend add شناسه\n"
                 ".enemy add شناسه\n"
                 ".ai on|off\n"
+                ".dev درخواست اصلاح کد\n"
                 ".schedule list\n"
                 ".plugin list"
             )
@@ -159,6 +172,29 @@ class CommandRouter:
                 return
             await set_status(self.db, int(parts[1]), command)
             await event.edit("وضعیت کاربر ثبت شد.")
+            return
+
+        if command == "dev":
+            if not owner_only(self.settings.owner_id, event.sender_id):
+                await event.edit("این فرمان فقط برای مالک است.")
+                return
+            if not self.dev_agent:
+                await event.edit(
+                    "Agent توسعه فعال نیست. GEMINI_API_KEY و GITHUB_TOKEN را تنظیم کن."
+                )
+                return
+            if not args.strip():
+                await event.edit(
+                    "استفاده: .dev مشکل یا قابلیت موردنظر را دقیق توضیح بده."
+                )
+                return
+
+            async def progress(text: str) -> None:
+                await event.edit(text[:3800])
+
+            await event.edit("Agent: شروع بررسی ریپو...")
+            result = await self.dev_agent.execute(args, progress=progress)
+            await event.edit(result[:3900])
             return
 
         if command == "ai":
