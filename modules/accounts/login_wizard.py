@@ -58,6 +58,11 @@ class LoginWizard:
         self.states: dict[int, LoginState] = {}
         self.logger = logging.getLogger("selfbot.login")
 
+    async def start_initial_login(self) -> None:
+        if self.states.get(self.owner_id):
+            return
+        await self._start_qr_login()
+
     async def register(self) -> None:
         async def start(event: Any) -> None:
             if event.sender_id != self.owner_id:
@@ -181,6 +186,7 @@ class LoginWizard:
                 ),
             )
             state.qr_message_id = message.id
+            self.logger.info("Initial/login QR sent to owner.")
         except Exception:
             self.logger.exception("Could not send QR code")
             await self.bot.send_message(
