@@ -116,9 +116,38 @@ class SelfBotPro:
         app = FastAPI(title="SelfBot Pro", docs_url=None, redoc_url=None)
 
         @app.get("/health")
+        def authorized(request: Any) -> bool:
+            expected = self.settings.control_api_key
+            if not expected:
+                return False
+            return request.headers.get("X-API-Key") == expected
+
+        @app.get("/health")
         async def health() -> JSONResponse:
             connected = bool(self.client and self.client.is_connected())
             return JSONResponse({"status": "ok" if connected else "starting", "telegram": connected})
+
+        @app.get("/dialogs")
+        async def dialogs(request: Any) -> JSONResponse:
+            from fastapi import HTTPException
+            if not authorized(request):
+                raise HTTPException(status_code=401, detail="unauthorized")
+            items = []
+            async for dialog in self.client.iter_dialogs(limit=100):
+                items.append({"id": dialog.id, "name": dialog.name, "unread": dialog.unread_count})
+            return JSONResponse({"items": items})
+
+        @app.post("/send")
+        async def send(payload: dict[str, Any], request: Any) -> JSONResponse:
+            from fastapi import HTTPException
+            if not authorized(request):
+                raise HTTPException(status_code=401, detail="unauthorized")
+            chat_id = payload.get("chat_id")
+            text = payload.get("text")
+            if chat_id is None or not isinstance(text, str) or not text.strip():
+                raise HTTPException(status_code=400, detail="chat_id و text الزامی هستند")
+            message = await self.client.send_message(int(chat_id), text)
+            return JSONResponse({"id": message.id, "chat_id": message.chat_id})
 
         @app.get("/status")
         async def status() -> JSONResponse:
