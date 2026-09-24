@@ -31,6 +31,18 @@ class CommandRouter:
         )
 
     async def register(self) -> None:
+        @self.client.on(events.NewMessage(incoming=True))
+        async def ai_handler(event: Any) -> None:
+            if not event.is_private or not self.claude or not event.raw_text:
+                return
+            if await self.db.get_setting(f"ai:{event.chat_id}", "0") != "1":
+                return
+            history = await self.db.get_ai_memory(event.chat_id, 50)
+            answer = await self.claude.reply(history, event.raw_text)
+            await self.db.save_ai_message(event.chat_id, "user", event.raw_text)
+            await self.db.save_ai_message(event.chat_id, "assistant", answer)
+            await event.reply(answer)
+
         @self.client.on(events.NewMessage(outgoing=True))
         async def handler(event: Any) -> None:
             if not event.raw_text:
@@ -59,6 +71,38 @@ class CommandRouter:
                 ".schedule list\n"
                 ".plugin list"
             )
+            return
+
+        if command == "bio":
+            if not owner_only(self.settings.owner_id, event.sender_id):
+                await event.edit("این فرمان فقط برای مالک است.")
+                return
+            from modules.status.animated_bio import set_bio
+            parts = args.rsplit(" interval:", 1)
+            texts = [x.strip() for x in parts[0].split("|") if x.strip()]
+            interval = float(parts[1]) if len(parts) == 2 else 30.0
+            await set_bio(self.client, self.db, self.scheduler, texts, interval)
+            await event.edit("Bio چرخشی ثبت شد.")
+            return
+
+        if command == "name":
+            if not owner_only(self.settings.owner_id, event.sender_id):
+                await event.edit("این فرمان فقط برای مالک است.")
+                return
+            from modules.status.rotating_name import set_name
+            parts = args.rsplit(" interval:", 1)
+            names = [x.strip() for x in parts[0].split("|") if x.strip()]
+            interval = float(parts[1]) if len(parts) == 2 else 30.0
+            await set_name(self.client, self.db, self.scheduler, names, interval)
+            await event.edit("نام چرخشی ثبت شد.")
+            return
+
+        if command == "clock":
+            if not owner_only(self.settings.owner_id, event.sender_id):
+                await event.edit("این فرمان فقط برای مالک است.")
+                return
+            await self.db.set_setting("clock_bio_enabled", "1" if args.lower() == "on" else "0")
+            await event.edit("ساعت Bio به‌روزرسانی می‌شود." if args.lower() == "on" else "ساعت Bio خاموش شد.")
             return
 
         if command == "font":
@@ -134,7 +178,13 @@ class CommandRouter:
             if not owner_only(self.settings.owner_id, event.sender_id):
                 await event.edit("این فرمان فقط برای مالک است.")
                 return
-            await event.edit("مدیریت افزونه‌ها از طریق PluginManager انجام می‌شود.")
+            from modules.utils.plugin_manager import PluginManager
+            manager = PluginManager(self.db)
+            if args == "list":
+                rows = await manager.list_plugins()
+                await event.edit("\n".join(f"{r['name']}: {'فعال' if r['enabled'] else 'خاموش'}" for r in rows) or "افزونه‌ای ثبت نشده است.")
+                return
+            await event.edit("فرمان افزونه: .plugin list")
             return
 
     async def _schedule(self, event: Any, args: str) -> None:
