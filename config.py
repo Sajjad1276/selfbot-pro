@@ -33,8 +33,10 @@ class Settings:
     session_path: str
     log_directory: str
     prefix: str
+    http_enabled: bool
     http_host: str
     http_port: int
+    string_session: str | None
 
 
 def get_settings() -> Settings:
@@ -74,6 +76,8 @@ def get_settings() -> Settings:
         session_path=session_path,
         log_directory=os.getenv("LOG_DIRECTORY", str(ROOT / "logs")),
         prefix=os.getenv("BOT_PREFIX", ".") or ".",
-        http_host=os.getenv("HTTP_HOST", "127.0.0.1"),
-        http_port=int(os.getenv("HTTP_PORT", "8080")),
+        http_enabled=os.getenv("HTTP_ENABLED", "true").lower() in {"1", "true", "yes", "on"},
+        http_host=os.getenv("HTTP_HOST", "0.0.0.0"),
+        http_port=int(os.getenv("PORT", os.getenv("HTTP_PORT", "8080"))),
+        string_session=os.getenv("STRING_SESSION") or None,
     )
