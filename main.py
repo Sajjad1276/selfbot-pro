@@ -200,9 +200,15 @@ class SelfBotPro:
             return JSONResponse({"status": "ok" if connected else "starting", "telegram": connected})
 
         @app.post("/telegram/webhook")
-        async def telegram_webhook(payload: dict[str, Any]) -> JSONResponse:
+        async def telegram_webhook(request: Request) -> JSONResponse:
             if not self.setup_bot:
                 raise HTTPException(status_code=503, detail="setup bot unavailable")
+            try:
+                payload = await request.json()
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail="invalid JSON body") from exc
+            if not isinstance(payload, dict):
+                raise HTTPException(status_code=400, detail="invalid Telegram update")
             await self.setup_bot.handle_update(payload)
             return JSONResponse({"ok": True})
 
