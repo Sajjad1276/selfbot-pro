@@ -79,7 +79,7 @@ async def jitter_delay(low: float = 0.5, high: float = 2.0) -> None:
 
 
 def safe_filename(name: str, default: str = "file") -> str:
-    value = re.sub(r"[\\/:*?"<>|\x00-\x1f]+", "_", name).strip()
+    value = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", name).strip()
     return value or default
 
 
