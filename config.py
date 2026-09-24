@@ -24,7 +24,9 @@ class Settings:
     api_hash: str
     phone: str
     owner_id: int | None
-    anthropic_api_key: str | None
+    gemini_api_key: str | None
+    gemini_model: str
+    setup_bot_token: str | None
     log_channel: int | str | None
     timezone: str
     default_lang: str
@@ -71,7 +73,9 @@ def get_settings() -> Settings:
         api_hash=api_hash,
         phone=phone,
         owner_id=int(owner_raw) if owner_raw else None,
-        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY") or None,
+        gemini_api_key=os.getenv("GEMINI_API_KEY") or None,
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
+        setup_bot_token=os.getenv("SETUP_BOT_TOKEN") or None,
         log_channel=log_channel,
         timezone=os.getenv("TIMEZONE", "Asia/Tehran"),
         default_lang=os.getenv("DEFAULT_LANG", "fa"),
