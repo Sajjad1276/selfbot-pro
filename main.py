@@ -6,6 +6,7 @@ from pathlib import Path
 from contextlib import suppress
 
 from modules.utils.plugin_manager import PluginManager
+from modules.accounts.manager import AccountManager
 
 from config import get_settings
 from modules.utils.database import Database
@@ -20,6 +21,7 @@ class SelfBotPro:
         self.scheduler = PersistentScheduler(self.db, self.settings.timezone)
         self.client = None
         self.plugin_manager = PluginManager(self.db)
+        self.account_manager = AccountManager(self.settings.api_id, self.settings.api_hash, self.settings.session_directory, self.db)
         self._stop_event = asyncio.Event()
         self._http_task: asyncio.Task[None] | None = None
 
@@ -28,26 +30,13 @@ class SelfBotPro:
         startup_banner()
         await self.db.connect()
 
-        from telethon import TelegramClient
-        from telethon.sessions import StringSession
-
-        if self.settings.string_session:
-            self.client = TelegramClient(
-                StringSession(self.settings.string_session),
-                self.settings.api_id,
-                self.settings.api_hash,
-                sequential_updates=True,
-            )
-            await self.client.start()
-        else:
-            Path(self.settings.session_directory).mkdir(parents=True, exist_ok=True)
-            self.client = TelegramClient(
-                self.settings.session_path,
-                self.settings.api_id,
-                self.settings.api_hash,
-                sequential_updates=True,
-            )
-            await self.client.start(phone=self.settings.phone or None)
+        key = self.settings.phone or "primary"
+        self.client = await self.account_manager.connect_primary(
+            key,
+            self.settings.string_session,
+            self.settings.phone,
+        )
+        await self.account_manager.connect_saved_sessions()
 
         me = await self.client.get_me()
         await self.db.set_setting("last_account_id", str(me.id))
@@ -67,16 +56,17 @@ class SelfBotPro:
         from modules.status.time_bio import register as register_time_bio
         from modules.security.saved_deleted import MessageArchive, register_cache
 
-        for register in (
-            register_auto_reply,
-            register_secretary,
-            register_rotating_name,
-            register_animated_bio,
-            register_clock_bio,
-            register_time_bio,
-            register_command_router,
-        ):
-            await register(self.client, self.db, self.settings, self.scheduler)
+        for client in self.account_manager.clients.values():
+            for register in (
+                register_auto_reply,
+                register_secretary,
+                register_rotating_name,
+                register_animated_bio,
+                register_clock_bio,
+                register_time_bio,
+                register_command_router,
+            ):
+                await register(client, self.db, self.settings, self.scheduler)
 
         self.message_archive = MessageArchive()
         register_cache(self.client, self.message_archive)
@@ -114,8 +104,8 @@ class SelfBotPro:
             with suppress(asyncio.CancelledError):
                 await self._http_task
             self._http_task = None
-        if self.client:
-            await self.client.disconnect()
+        await self.account_manager.disconnect_all()
+        self.client = None
         await self.db.close()
 
     async def _run_http_server(self) -> None:
