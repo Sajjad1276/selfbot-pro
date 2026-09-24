@@ -148,6 +148,10 @@ class CommandRouter:
             await event.edit("\n".join(f"{k}: {v}" for k, v in data.items()))
             return
 
+        if command == "account":
+            await self._account(event, args)
+            return
+
         if command in {"friend", "enemy"}:
             parts = args.split()
             if len(parts) != 2 or parts[0] != "add" or not parts[1].lstrip("-").isdigit():
