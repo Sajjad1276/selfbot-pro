@@ -45,8 +45,6 @@ async def run_bringstorm_once(client, db) -> bool:
     if await db.get_setting(setting_key, "0") == "1":
         return False
 
-    await client.send_message("me", "Bringstorm شروع شد. جست‌وجوی تقاضا در Telegram در حال انجام است.")
-
     findings = defaultdict(list)
     seen = set()
 
