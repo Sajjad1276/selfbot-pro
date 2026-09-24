@@ -38,6 +38,7 @@ class SetupBotApi:
         self._task: asyncio.Task[Any] | None = None
         self._closed = asyncio.Event()
         self._offset = 0
+        self._webhook_mode = False
 
     def add_handler(
         self,
@@ -47,10 +48,25 @@ class SetupBotApi:
         compiled = re.compile(pattern) if pattern else None
         self._handlers.append((handler, compiled))
 
-    async def start(self) -> None:
-        if self._task is None or self._task.done():
-            self._closed.clear()
-            self._task = asyncio.create_task(self._poll())
+    async def start(self, webhook_url: str | None = None) -> None:
+        if self._task is not None and not self._task.done():
+            return
+
+        self._closed.clear()
+        self._webhook_mode = bool(webhook_url)
+        if webhook_url:
+            await self._call(
+                "setWebhook",
+                {
+                    "url": webhook_url,
+                    "allowed_updates": ["message"],
+                    "drop_pending_updates": False,
+                },
+            )
+            self.logger.info("Setup Bot webhook enabled: %s", webhook_url)
+            return
+
+        self._task = asyncio.create_task(self._poll())
 
     async def close(self) -> None:
         self._closed.set()
@@ -59,6 +75,10 @@ class SetupBotApi:
             with suppress(asyncio.CancelledError):
                 await self._task
             self._task = None
+        if self._webhook_mode:
+            with suppress(Exception):
+                await self._call("deleteWebhook", {"drop_pending_updates": False})
+            self._webhook_mode = False
 
     async def send_message(self, chat_id: int, text: str) -> dict[str, Any]:
         return await self._call("sendMessage", {"chat_id": chat_id, "text": text})
@@ -123,20 +143,30 @@ class SetupBotApi:
                     if not text or not from_user.get("id") or not chat.get("id"):
                         continue
 
-                    event = SetupBotEvent(
-                        bot=self,
-                        chat_id=int(chat["id"]),
-                        sender_id=int(from_user["id"]),
-                        message_id=int(message["message_id"]),
-                        raw_text=text,
-                    )
-                    await self._dispatch(event)
+                    await self.handle_update(update)
             except asyncio.CancelledError:
                 raise
             except Exception:
                 self.logger.exception("Setup Bot API polling failed")
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 30)
+
+    async def handle_update(self, update: dict[str, Any]) -> None:
+        message = update.get("message") or {}
+        from_user = message.get("from") or {}
+        chat = message.get("chat") or {}
+        text = message.get("text")
+        if not text or not from_user.get("id") or not chat.get("id"):
+            return
+
+        event = SetupBotEvent(
+            bot=self,
+            chat_id=int(chat["id"]),
+            sender_id=int(from_user["id"]),
+            message_id=int(message["message_id"]),
+            raw_text=text,
+        )
+        await self._dispatch(event)
 
     async def _dispatch(self, event: SetupBotEvent) -> None:
         for handler, pattern in tuple(self._handlers):
