@@ -4,6 +4,10 @@ import asyncio
 import signal
 from pathlib import Path
 from contextlib import suppress
+from typing import Any
+
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
 
 from modules.utils.plugin_manager import PluginManager
 from modules.accounts.manager import AccountManager
@@ -182,8 +186,6 @@ class SelfBotPro:
         await self.db.close()
 
     async def _run_http_server(self) -> None:
-        from fastapi import FastAPI, Request, HTTPException
-        from fastapi.responses import JSONResponse
         import uvicorn
 
         app = FastAPI(title="SelfBot Pro", docs_url=None, redoc_url=None)
