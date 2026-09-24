@@ -47,6 +47,7 @@ class Settings:
     dev_agent_repository: str
     dev_agent_branch: str
     railway_health_url: str | None
+    setup_bot_webhook_url: str | None
     dev_agent_max_rounds: int
 
 
@@ -104,6 +105,14 @@ def get_settings() -> Settings:
             os.getenv("RAILWAY_HEALTH_URL")
             or (
                 f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN').strip()}"
+                if os.getenv("RAILWAY_PUBLIC_DOMAIN")
+                else None
+            )
+        ),
+        setup_bot_webhook_url=(
+            os.getenv("SETUP_BOT_WEBHOOK_URL")
+            or (
+                f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN').strip()}/telegram/webhook"
                 if os.getenv("RAILWAY_PUBLIC_DOMAIN")
                 else None
             )
