@@ -51,7 +51,6 @@ class SelfBotPro:
             if not self.settings.owner_id:
                 raise RuntimeError("برای ورود از طریق ربات، OWNER_ID الزامی است.")
             self.setup_bot = SetupBotApi(self.settings.setup_bot_token)
-            await self.setup_bot.start()
             self.login_wizard = LoginWizard(
                 self.setup_bot,
                 self.settings.api_id,
@@ -72,6 +71,9 @@ class SelfBotPro:
 
         if self.settings.http_enabled:
             self._http_task = asyncio.create_task(self._run_http_server())
+
+        if self.setup_bot:
+            await self.setup_bot.start(self.settings.setup_bot_webhook_url)
 
         from modules.messaging.auto_reply import register as register_auto_reply
         from modules.messaging.secretary import register as register_secretary
@@ -196,6 +198,13 @@ class SelfBotPro:
         async def health() -> JSONResponse:
             connected = bool(self.client and self.client.is_connected())
             return JSONResponse({"status": "ok" if connected else "starting", "telegram": connected})
+
+        @app.post("/telegram/webhook")
+        async def telegram_webhook(payload: dict[str, Any]) -> JSONResponse:
+            if not self.setup_bot:
+                raise HTTPException(status_code=503, detail="setup bot unavailable")
+            await self.setup_bot.handle_update(payload)
+            return JSONResponse({"ok": True})
 
         @app.get("/dialogs")
         async def dialogs(request: Request) -> JSONResponse:
