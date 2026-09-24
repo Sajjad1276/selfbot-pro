@@ -97,11 +97,4 @@ async def run_bringstorm_once(client, db) -> bool:
     if len(lines) <= 5:
         lines.append("نتیجه قابل استفاده‌ای از جست‌وجوی عمومی پیدا نشد.")
 
-    # Keep Saved Messages readable and avoid Telegram message-size limits.
-    report = "\n".join(lines)
-    for start in range(0, len(report), 3500):
-        await client.send_message("me", report[start:start + 3500])
-
-    print(report, flush=True)
-    await db.set_setting(setting_key, "1")
-    return True
+    report = "\n".join(lines)\n    print(report, flush=True)\n    await db.set_setting(setting_key, "1")\n    return True
