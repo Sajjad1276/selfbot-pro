@@ -40,7 +40,9 @@ async def run_bringstorm_once(client, db) -> bool:
     if os.getenv("BRINGSTORM_ENABLED", "0") != "1":
         return False
 
-    if await db.get_setting("bringstorm_completed", "0") == "1":
+    run_id = os.getenv("BRINGSTORM_RUN_ID", "1")
+    setting_key = f"bringstorm_completed:{run_id}"
+    if await db.get_setting(setting_key, "0") == "1":
         return False
 
     await client.send_message("me", "Bringstorm شروع شد. جست‌وجوی تقاضا در Telegram در حال انجام است.")
@@ -100,5 +102,6 @@ async def run_bringstorm_once(client, db) -> bool:
     for start in range(0, len(report), 3500):
         await client.send_message("me", report[start:start + 3500])
 
-    await db.set_setting("bringstorm_completed", "1")
+    print(report, flush=True)
+    await db.set_setting(setting_key, "1")
     return True
