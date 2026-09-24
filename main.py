@@ -45,18 +45,13 @@ class SelfBotPro:
             )
 
         if not self.client and self.settings.setup_bot_token:
-            from telethon import TelegramClient
             from modules.accounts.login_wizard import LoginWizard
+            from modules.accounts.setup_bot_api import SetupBotApi
 
             if not self.settings.owner_id:
                 raise RuntimeError("برای ورود از طریق ربات، OWNER_ID الزامی است.")
-            self.setup_bot = TelegramClient(
-                str(Path(self.settings.session_directory) / "setup_bot"),
-                self.settings.api_id,
-                self.settings.api_hash,
-                sequential_updates=True,
-            )
-            await self.setup_bot.start(bot_token=self.settings.setup_bot_token)
+            self.setup_bot = SetupBotApi(self.settings.setup_bot_token)
+            await self.setup_bot.start()
             self.login_wizard = LoginWizard(
                 self.setup_bot,
                 self.settings.api_id,
@@ -178,8 +173,8 @@ class SelfBotPro:
                 await self._http_task
             self._http_task = None
         await self.account_manager.disconnect_all()
-        if self.setup_bot and self.setup_bot.is_connected():
-            await self.setup_bot.disconnect()
+        if self.setup_bot:
+            await self.setup_bot.close()
         self.setup_bot = None
         self.client = None
         await self.db.close()
