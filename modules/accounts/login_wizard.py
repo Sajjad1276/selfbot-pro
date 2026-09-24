@@ -121,9 +121,24 @@ class LoginWizard:
                     "رمز ذخیره نمی‌شود."
                 )
                 await self._delete_message(event)
-            except (PhoneCodeInvalidError, PhoneCodeExpiredError):
+            except PhoneCodeInvalidError:
+                self.logger.warning(
+                    "Telegram rejected login code for owner=%s phone_suffix=%s",
+                    self.owner_id,
+                    state.phone[-4:],
+                )
                 await event.respond(
-                    "کد Telegram نادرست یا منقضی است. کد کامل را دوباره ارسال کن یا /cancel بزن."
+                    "Telegram این کد را رد کرد. احتمالاً کد مربوط به تلاش قبلی است یا کد جدیدتری صادر شده. "
+                    "فقط آخرین کد را ارسال کن؛ برای کد تازه /newcode را بزن."
+                )
+            except PhoneCodeExpiredError:
+                self.logger.warning(
+                    "Telegram login code expired for owner=%s phone_suffix=%s",
+                    self.owner_id,
+                    state.phone[-4:],
+                )
+                await event.respond(
+                    "این کد منقضی شده است. /newcode را بزن و فقط کد جدید را ارسال کن."
                 )
                 await self._delete_message(event)
             except PasswordHashInvalidError:
@@ -141,7 +156,16 @@ class LoginWizard:
     @staticmethod
     def _normalize_code(value: str) -> str:
         normalized = value.translate(_PERSIAN_DIGITS).translate(_ARABIC_DIGITS)
-        return re.sub(r"\D", "", normalized)
+        groups = re.findall(r"\d+", normalized)
+
+        # Prefer an explicit 4-8 digit code from copied Telegram text.
+        candidates = [group for group in groups if 4 <= len(group) <= 8]
+        if candidates:
+            return candidates[-1]
+
+        # Also accept codes written with spaces between digits, e.g. "1 2 3 4 5".
+        digits = "".join(groups)
+        return digits if 4 <= len(digits) <= 8 else ""
 
     def _expired(self, state: LoginState) -> bool:
         return (
@@ -203,6 +227,15 @@ class LoginWizard:
         state: LoginState,
         code: str,
     ) -> None:
+        self.logger.info(
+            "Submitting Telegram login code for owner=%s phone_suffix=%s code_length=%s",
+            self.owner_id,
+            state.phone[-4:],
+            len(code),
+        )
+        if not state.client.is_connected():
+            await state.client.connect()
+
         user = await state.client.sign_in(
             phone=state.phone,
             code=code,
