@@ -71,9 +71,6 @@ class SelfBotPro:
             await self.db.set_setting("last_account_id", str(me.id))
             await self.db.set_setting("last_account_username", me.username or "")
 
-        from modules.research.bringstorm import run_bringstorm_once
-        await run_bringstorm_once(self.client, self.db)
-
         await self.scheduler.start()
 
         if self.settings.http_enabled:
