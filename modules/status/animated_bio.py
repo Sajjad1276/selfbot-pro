@@ -21,7 +21,7 @@ async def _tick(client: Any, db: Database, texts: list[str]) -> None:
     if not state or not state["texts"]:
         return
     index = int(state["current_index"]) % len(texts)
-    await client(functions.AccountUpdateProfileRequest(about=texts[index]))
+    await client.edit_profile(about=texts[index])
     await db.execute(
         "UPDATE rotating_texts SET current_index = ? WHERE type = 'bio'",
         ((index + 1) % len(texts),),
