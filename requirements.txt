@@ -6,7 +6,7 @@ deep-translator==1.11.4
 Pillow==10.4.0
 requests==2.32.3
 beautifulsoup4==4.12.3
-aiohttp==3.10.5
+aiohttp==3.10.11
 aiosqlite==0.20.0
 fastapi==0.115.0
 uvicorn==0.30.6
