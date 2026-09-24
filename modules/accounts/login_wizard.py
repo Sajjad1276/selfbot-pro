@@ -38,6 +38,7 @@ class LoginWizard:
         self.api_id = api_id
         self.api_hash = api_hash
         self.session_directory = Path(session_directory)
+        self.session_directory.mkdir(parents=True, exist_ok=True)
         self.owner_id = owner_id
         self.db = db
         self.on_login = on_login
