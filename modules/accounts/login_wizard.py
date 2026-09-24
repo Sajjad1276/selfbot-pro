@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import qrcode
-from telethon import TelegramClient, events
+from telethon import TelegramClient
 from telethon.errors import PasswordHashInvalidError, SessionPasswordNeededError
 
 
@@ -59,14 +59,16 @@ class LoginWizard:
         self.logger = logging.getLogger("selfbot.login")
 
     async def register(self) -> None:
-        @self.bot.on(events.NewMessage(pattern=r"^/start$"))
         async def start(event: Any) -> None:
             if event.sender_id != self.owner_id:
                 return
 
             state = self.states.get(self.owner_id)
             if state:
-                if state.awaiting_password:
+            self.bot.add_handler(start, pattern=r"^/start$")
+        self.bot.add_handler(handle_message)
+
+            if state.awaiting_password:
                     await event.respond(
                         "QR ورود تأیید شد و رمز دو مرحله‌ای لازم است.\n"
                         "رمز 2FA را همینجا ارسال کن. رمز ذخیره نمی‌شود."
@@ -81,7 +83,6 @@ class LoginWizard:
 
             await self._start_qr_login()
 
-        @self.bot.on(events.NewMessage())
         async def handle_message(event: Any) -> None:
             if event.sender_id != self.owner_id or not event.raw_text:
                 return
