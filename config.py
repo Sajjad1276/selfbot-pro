@@ -30,6 +30,7 @@ class Settings:
     default_lang: str
     database_path: str
     session_directory: str
+    session_path: str
     log_directory: str
     prefix: str
     http_host: str
@@ -55,6 +56,10 @@ def get_settings() -> Settings:
         "DATABASE_PATH", str(ROOT / "data" / "selfbot.db")
     )
 
+    safe_phone = phone.replace("+", "").replace(" ", "").replace("-", "") or "default"
+    session_directory = os.getenv("SESSION_DIRECTORY", str(ROOT / "sessions"))
+    session_path = str(Path(session_directory) / safe_phone)
+
     return Settings(
         api_id=api_id,
         api_hash=api_hash,
@@ -65,16 +70,10 @@ def get_settings() -> Settings:
         timezone=os.getenv("TIMEZONE", "Asia/Tehran"),
         default_lang=os.getenv("DEFAULT_LANG", "fa"),
         database_path=database_path,
-        session_directory=os.getenv(
-            "SESSION_DIRECTORY", str(ROOT / "sessions")
-        ),
+        session_directory=session_directory,
+        session_path=session_path,
         log_directory=os.getenv("LOG_DIRECTORY", str(ROOT / "logs")),
         prefix=os.getenv("BOT_PREFIX", ".") or ".",
         http_host=os.getenv("HTTP_HOST", "127.0.0.1"),
         http_port=int(os.getenv("HTTP_PORT", "8080")),
     )
-
-
-@property
-def session_path_placeholder() -> str:
-    return ""
