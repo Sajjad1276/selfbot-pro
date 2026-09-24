@@ -102,9 +102,7 @@ async def main() -> None:
         )
 
         header = (
-            "🎮 مأموریت پیدا کردن کانال‌های گیم
-
-"
+            "🎮 مأموریت پیدا کردن کانال‌های گیم\n\n"
             f"زمان اجرا: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"
             f"تعداد جست‌وجوها: {completed_queries}/{len(SEARCHES)}\n"
             f"تعداد کانال‌های عمومی یکتا: {len(items)}\n\n"
