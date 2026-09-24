@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import signal
+from pathlib import Path
 from contextlib import suppress
+
+from modules.utils.plugin_manager import PluginManager
 
 from config import get_settings
 from modules.utils.database import Database
@@ -16,7 +19,9 @@ class SelfBotPro:
         self.db = Database(self.settings.database_path)
         self.scheduler = PersistentScheduler(self.db, self.settings.timezone)
         self.client = None
+        self.plugin_manager = PluginManager(self.db)
         self._stop_event = asyncio.Event()
+        self._http_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         setup_logging(self.settings.log_directory)
@@ -24,21 +29,34 @@ class SelfBotPro:
         await self.db.connect()
 
         from telethon import TelegramClient
+        from telethon.sessions import StringSession
 
-        self.client = TelegramClient(
-            self.settings.session_path,
-            self.settings.api_id,
-            self.settings.api_hash,
-            sequential_updates=True,
-        )
-
-        await self.client.start(phone=self.settings.phone or None)
+        if self.settings.string_session:
+            self.client = TelegramClient(
+                StringSession(self.settings.string_session),
+                self.settings.api_id,
+                self.settings.api_hash,
+                sequential_updates=True,
+            )
+            await self.client.start()
+        else:
+            Path(self.settings.session_directory).mkdir(parents=True, exist_ok=True)
+            self.client = TelegramClient(
+                self.settings.session_path,
+                self.settings.api_id,
+                self.settings.api_hash,
+                sequential_updates=True,
+            )
+            await self.client.start(phone=self.settings.phone or None)
 
         me = await self.client.get_me()
         await self.db.set_setting("last_account_id", str(me.id))
         await self.db.set_setting("last_account_username", me.username or "")
 
         await self.scheduler.start()
+
+        if self.settings.http_enabled:
+            self._http_task = asyncio.create_task(self._run_http_server())
 
         from modules.messaging.auto_reply import register as register_auto_reply
         from modules.messaging.secretary import register as register_secretary
@@ -81,9 +99,46 @@ class SelfBotPro:
         if self.client:
             await self._send_log("خاموشی", "برنامه در حال خاموش شدن است.")
         await self.scheduler.stop()
+        if self._http_task:
+            self._http_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._http_task
+            self._http_task = None
         if self.client:
             await self.client.disconnect()
         await self.db.close()
+
+    async def _run_http_server(self) -> None:
+        from fastapi import FastAPI
+        from fastapi.responses import JSONResponse
+        import uvicorn
+
+        app = FastAPI(title="SelfBot Pro", docs_url=None, redoc_url=None)
+
+        @app.get("/health")
+        async def health() -> JSONResponse:
+            connected = bool(self.client and self.client.is_connected())
+            return JSONResponse({"status": "ok" if connected else "starting", "telegram": connected})
+
+        @app.get("/status")
+        async def status() -> JSONResponse:
+            me = await self.client.get_me() if self.client and self.client.is_connected() else None
+            return JSONResponse({
+                "status": "ok",
+                "telegram_connected": bool(me),
+                "telegram_id": me.id if me else None,
+                "username": me.username if me else None,
+                "scheduled_tasks": self.scheduler.pending_count(),
+            })
+
+        config = uvicorn.Config(
+            app,
+            host=self.settings.http_host,
+            port=self.settings.http_port,
+            log_level="warning",
+        )
+        server = uvicorn.Server(config)
+        await server.serve()
 
     async def run(self) -> None:
         try:
