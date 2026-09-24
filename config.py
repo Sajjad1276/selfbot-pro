@@ -43,6 +43,11 @@ class Settings:
     stt_endpoint: str | None
     stt_api_key: str | None
     control_api_key: str | None
+    github_token: str | None
+    dev_agent_repository: str
+    dev_agent_branch: str
+    railway_health_url: str | None
+    dev_agent_max_rounds: int
 
 
 def get_settings() -> Settings:
@@ -92,4 +97,16 @@ def get_settings() -> Settings:
         stt_endpoint=os.getenv("STT_ENDPOINT") or None,
         stt_api_key=os.getenv("STT_API_KEY") or None,
         control_api_key=os.getenv("CONTROL_API_KEY") or None,
+        github_token=os.getenv("GITHUB_TOKEN") or None,
+        dev_agent_repository=os.getenv("DEV_AGENT_REPOSITORY", "Sajjad1276/selfbot-pro"),
+        dev_agent_branch=os.getenv("DEV_AGENT_BRANCH", "main"),
+        railway_health_url=(
+            os.getenv("RAILWAY_HEALTH_URL")
+            or (
+                f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN').strip()}"
+                if os.getenv("RAILWAY_PUBLIC_DOMAIN")
+                else None
+            )
+        ),
+        dev_agent_max_rounds=int(os.getenv("DEV_AGENT_MAX_ROUNDS", "24")),
     )
