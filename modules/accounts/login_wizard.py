@@ -85,6 +85,10 @@ class LoginWizard:
                 await self._cancel(event)
                 return
 
+            if text == "/newcode":
+                await self._resend_code(event)
+                return
+
             state = self.states.get(self.owner_id)
             if not state:
                 if text.startswith("+"):
@@ -105,12 +109,6 @@ class LoginWizard:
                     if not code:
                         await event.respond(
                             "کد نامعتبر است. فقط عددهای کد Telegram را ارسال کن."
-                        )
-                        await self._delete_message(event)
-                        return
-                    if len(code) < 4:
-                        await event.respond(
-                            "کد ناقص دریافت شد. همه رقم‌های کد Telegram را یکجا ارسال کن."
                         )
                         await self._delete_message(event)
                         return
@@ -152,8 +150,10 @@ class LoginWizard:
         )
 
     async def _request_code(self, event: Any, phone: str) -> None:
+        await self._reset_state(delete_session=True)
+        session_base = self.session_directory / "pending_login"
         client = TelegramClient(
-            str(self.session_directory / "pending_login"),
+            str(session_base),
             self.api_id,
             self.api_hash,
         )
@@ -182,8 +182,9 @@ class LoginWizard:
             created_at=asyncio.get_running_loop().time(),
         )
         await event.respond(
-            "کد ورود ارسال شد. کد کامل Telegram را همینجا ارسال کن.\n"
-            "اگر کد به شکل چند رقم با فاصله نمایش داده شد، همان را ارسال کن."
+            "کد ورود ارسال شد. جدیدترین کد Telegram را همینجا ارسال کن.\n"
+            "می‌توانی کد را با یا بدون فاصله ارسال کنی.\n"
+            "برای دریافت کد تازه: /newcode"
         )
         await self._delete_message(event)
 
@@ -236,11 +237,27 @@ class LoginWizard:
         await event.respond("فرآیند ورود لغو شد.")
         await self._delete_message(event)
 
-    async def _reset_state(self) -> None:
+    async def _resend_code(self, event: Any) -> None:
+        state = self.states.get(self.owner_id)
+        if not state:
+            await event.respond("فرآیند ورود فعالی وجود ندارد. ابتدا /start را بزن.")
+            await self._delete_message(event)
+            return
+
+        await self._reset_state(delete_session=True)
+        await self._request_code(event, state.phone)
+
+    async def _reset_state(self, delete_session: bool = False) -> None:
         state = self.states.pop(self.owner_id, None)
         if state:
             with suppress(Exception):
                 await state.client.disconnect()
+        if delete_session:
+            for suffix in ("", ".session", ".session-journal"):
+                path = self.session_directory / f"pending_login{suffix}"
+                with suppress(Exception):
+                    if path.exists():
+                        path.unlink()
 
     async def _delete_message(self, event: Any) -> None:
         with suppress(Exception):
