@@ -36,7 +36,7 @@ class SelfBotPro:
         if not self.client:
             self.client = self.account_manager.active() or next(iter(self.account_manager.clients.values()), None)
 
-        if not self.client and self.settings.string_session:
+        if not self.client and (self.settings.string_session or (self.settings.phone and not self.settings.setup_bot_token)):
             key = self.settings.phone or "primary"
             self.client = await self.account_manager.connect_primary(
                 key,
