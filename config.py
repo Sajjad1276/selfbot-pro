@@ -37,6 +37,10 @@ class Settings:
     http_host: str
     http_port: int
     string_session: str | None
+    tenor_api_key: str | None
+    stt_endpoint: str | None
+    stt_api_key: str | None
+    control_api_key: str | None
 
 
 def get_settings() -> Settings:
@@ -80,4 +84,8 @@ def get_settings() -> Settings:
         http_host=os.getenv("HTTP_HOST", "0.0.0.0"),
         http_port=int(os.getenv("PORT", os.getenv("HTTP_PORT", "8080"))),
         string_session=os.getenv("STRING_SESSION") or None,
+        tenor_api_key=os.getenv("TENOR_API_KEY") or None,
+        stt_endpoint=os.getenv("STT_ENDPOINT") or None,
+        stt_api_key=os.getenv("STT_API_KEY") or None,
+        control_api_key=os.getenv("CONTROL_API_KEY") or None,
     )
