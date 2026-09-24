@@ -153,7 +153,7 @@ class SelfBotPro:
     async def _register_user_client(self, client, register_auto_reply, register_secretary, register_rotating_name, register_animated_bio, register_clock_bio, register_time_bio, register_auto_read, register_command_router, message_archive_cls, register_cache) -> None:
         for register in (register_auto_reply, register_secretary, register_rotating_name, register_animated_bio, register_clock_bio, register_time_bio):
             await register(client, self.db, self.settings, self.scheduler)
-        await register_auto_read(client, self.db)
+        register_auto_read(client, self.db)
         await register_command_router(client, self.db, self.settings, self.scheduler, self.account_manager)
         self.message_archive = message_archive_cls()
         register_cache(client, self.message_archive)
