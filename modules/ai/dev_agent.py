@@ -194,6 +194,17 @@ class DeveloperAgent:
                 },
             },
             {
+                "name": "ci_logs",
+                "description": "متن لاگ job ناموفق GitHub Actions را برای پیدا کردن علت واقعی خطا برمی‌گرداند.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "commit_sha": {"type": "string"},
+                    },
+                    "required": ["commit_sha"],
+                },
+            },
+            {
                 "name": "verify_ci_and_deploy",
                 "description": "آخرین commit را در GitHub Actions و status مربوط به Railway بررسی و در صورت نیاز منتظر نتیجه می‌ماند.",
                 "parameters": {
@@ -224,6 +235,8 @@ class DeveloperAgent:
                 str(args.get("message") or "chore: agent update"),
                 args.get("changes") or [],
             )
+        if name == "ci_logs":
+            return await self._ci_logs(str(args.get("commit_sha") or ""))
         if name == "verify_ci_and_deploy":
             return await self._verify_ci_and_deploy(
                 str(args.get("commit_sha") or ""),
@@ -268,9 +281,14 @@ class DeveloperAgent:
                 params={"ref": self.branch},
             )
         else:
+            ref = await self._github_request(
+                "GET",
+                f"/repos/{self.repository}/git/ref/heads/{self.branch}",
+            )
+            tree_sha = ref["object"]["sha"]
             data = await self._github_request(
                 "GET",
-                f"/repos/{self.repository}/git/trees/{self.branch}",
+                f"/repos/{self.repository}/git/trees/{tree_sha}",
                 params={"recursive": "1"},
             )
         if isinstance(data, dict) and "tree" in data:
@@ -402,6 +420,79 @@ class DeveloperAgent:
             "files": [path for path, _ in normalized],
         }
 
+    async def _ci_logs(self, commit_sha: str) -> dict[str, Any]:
+        if not re.fullmatch(r"[0-9a-f]{40}", commit_sha):
+            return {"ok": False, "error": "commit_sha نامعتبر است."}
+
+        runs = await self._github_request(
+            "GET",
+            f"/repos/{self.repository}/actions/runs",
+            params={"head_sha": commit_sha, "per_page": "10"},
+        )
+        runs_list = runs.get("workflow_runs", [])
+        if not runs_list:
+            return {"ok": False, "error": "برای این commit اجرای CI پیدا نشد."}
+
+        failed_run = next(
+            (
+                run
+                for run in runs_list
+                if run.get("status") == "completed"
+                and run.get("conclusion") != "success"
+            ),
+            None,
+        )
+        if not failed_run:
+            return {"ok": True, "message": "اجرای ناموفق CI برای این commit پیدا نشد."}
+
+        jobs = await self._github_request(
+            "GET",
+            f"/repos/{self.repository}/actions/runs/{failed_run['id']}/jobs",
+            params={"per_page": "20"},
+        )
+        failed_jobs = [
+            job for job in jobs.get("jobs", [])
+            if job.get("conclusion") not in {None, "success"}
+        ]
+        if not failed_jobs:
+            return {
+                "ok": False,
+                "error": "CI ناموفق است ولی job ناموفق قابل دسترسی نیست.",
+            }
+
+        collected = []
+        timeout = aiohttp.ClientTimeout(total=40)
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {self.github_token}",
+            "X-GitHub-Api-Version": "2026-03-10",
+            "User-Agent": "SelfBot-Pro-Developer-Agent",
+        }
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+            for job in failed_jobs[:3]:
+                async with session.get(
+                    f"{GITHUB_API}/repos/{self.repository}/actions/jobs/{job['id']}/logs"
+                ) as response:
+                    if response.status >= 400:
+                        continue
+                    log_text = await response.text()
+                    if len(log_text) > 40_000:
+                        log_text = log_text[-40_000:]
+                    collected.append(
+                        {
+                            "job": job.get("name"),
+                            "conclusion": job.get("conclusion"),
+                            "logs": self._redact(log_text),
+                        }
+                    )
+
+        return {
+            "ok": bool(collected),
+            "run_id": failed_run.get("id"),
+            "run_name": failed_run.get("name"),
+            "jobs": collected,
+        }
+
     async def _verify_ci_and_deploy(
         self,
         commit_sha: str,
@@ -504,6 +595,13 @@ class DeveloperAgent:
     @staticmethod
     def _looks_secret(text: str) -> bool:
         return any(re.search(pattern, text) for pattern in SECRET_PATTERNS)
+
+    @staticmethod
+    def _redact(text: str) -> str:
+        redacted = text
+        for pattern in SECRET_PATTERNS:
+            redacted = re.sub(pattern, "[REDACTED]", redacted)
+        return redacted
 
     @staticmethod
     def _extract_function_calls(response: Any) -> list[dict[str, Any]]:
