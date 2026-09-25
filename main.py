@@ -77,8 +77,11 @@ class SelfBotPro:
                         else f"{m['name']} id={m['id']}"
                         for m in matches
                     )
-                    await self._send_log("جستجوی مخاطب", f"عبارت «{contact_query}»: {result}")
                     print(f"[CONTACT_SEARCH] {contact_query}: {result}")
+                    target = matches[0]["id"]
+                    await self.client.send_message(target, "چطوری")
+                    await self._send_log("جستجوی مخاطب", f"عبارت «{contact_query}»: {result} | پیام «چطوری» ارسال شد.")
+                    print(f"[CONTACT_SEARCH] message sent to id={target}")
                 else:
                     await self._send_log("جستجوی مخاطب", f"عبارت «{contact_query}»: موردی پیدا نشد.")
                     print(f"[CONTACT_SEARCH] {contact_query}: no matches")
