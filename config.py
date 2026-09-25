@@ -49,6 +49,7 @@ class Settings:
     railway_health_url: str | None
     setup_bot_webhook_url: str | None
     dev_agent_max_rounds: int
+    contact_search_query: str | None
 
 
 def get_settings() -> Settings:
@@ -118,4 +119,5 @@ def get_settings() -> Settings:
             )
         ),
         dev_agent_max_rounds=int(os.getenv("DEV_AGENT_MAX_ROUNDS", "24")),
+        contact_search_query=os.getenv("CONTACT_SEARCH_QUERY") or None,
     )
