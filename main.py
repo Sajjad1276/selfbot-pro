@@ -16,6 +16,7 @@ from config import get_settings
 from modules.utils.database import Database
 from modules.utils.helpers import setup_logging, startup_banner
 from modules.utils.scheduler import PersistentScheduler
+from modules.contacts.search import search_contacts
 
 
 class SelfBotPro:
@@ -65,6 +66,25 @@ class SelfBotPro:
                 on_login=self._on_user_login,
             )
             await self.login_wizard.register()
+
+        contact_query = self.settings.contact_search_query
+        if self.client and contact_query:
+            try:
+                matches = await search_contacts(self.client, contact_query)
+                if matches:
+                    result = " | ".join(
+                        f"{m['name']} (@{m['username']}) id={m['id']}" if m.get("username")
+                        else f"{m['name']} id={m['id']}"
+                        for m in matches
+                    )
+                    await self._send_log("جستجوی مخاطب", f"عبارت «{contact_query}»: {result}")
+                    print(f"[CONTACT_SEARCH] {contact_query}: {result}")
+                else:
+                    await self._send_log("جستجوی مخاطب", f"عبارت «{contact_query}»: موردی پیدا نشد.")
+                    print(f"[CONTACT_SEARCH] {contact_query}: no matches")
+            except Exception as exc:
+                await self._send_log("خطای جستجوی مخاطب", f"عبارت «{contact_query}»: {exc}")
+                print(f"[CONTACT_SEARCH] {contact_query}: ERROR {exc!r}")
 
         me = await self.client.get_me() if self.client else None
         if me:
